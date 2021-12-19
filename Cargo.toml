@@ -1,0 +1,14 @@
+[package]
+name = "trunk"
+version = "0.1.0"
+authors = ["LamdaDM <ericdmcintosh@outlook.com>"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bunker = { git = "https://github.com/LamdaDM/bunker" }
+cfg_loader = { git = "https://github.com/LamdaDM/rust_cfg_loader" }
+rust-argon2 = "0.8"
+mysql = "*"
+lazy_static = "*"
