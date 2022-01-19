@@ -1,5 +1,7 @@
 use bunker::{exception::BunkerError, registerable};
 
+use crate::dependency::VARIABLE_MAP;
+
 pub struct HashController;
 
 impl registerable::Controller for HashController {
@@ -13,10 +15,10 @@ impl registerable::Controller for HashController {
 /// Throws error from utf8-to-string conversion, string-to-u32 conversion or wrong formatting.
 fn serve(msg: &str) -> Result<String, BunkerError> {
     let parsed_input: Vec<&str> = msg
-        .split('|')
+        .split(VARIABLE_MAP.get_val("PARAM_SEPARATOR").unwrap())
         .collect();
 
-    if parsed_input.len() != 4 { return Err(BunkerError::BadRequest("s".to_string())) }; // TODO: Proper error message for bad formatting
+    if parsed_input.len() != 4 { return Err(BunkerError::BadRequest("Invalid request.".to_string())) }; // TODO: Proper error message for bad formatting
 
     let mem_cost = match parsed_input[1].parse::<u32>() {
         Ok(val) => val * 1024,

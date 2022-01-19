@@ -5,8 +5,6 @@ use mysql::params;
 use mysql::prelude::Queryable;
 use crate::dependency::DATABASE_MYSQL;
 
-const LOG_TABLE_NAME: &str = "placeholder";
-
 pub struct LoggerController;
 
 impl registerable::Controller for LoggerController {
@@ -58,7 +56,7 @@ impl Model {
             .split('|')
             .collect();
 
-        if req.len() != 2 { return Err(BunkerError::BadRequest("placeholder".to_string())) }
+        if req.len() != 2 { return Err(BunkerError::BadRequest("Invalid request.".to_string())) }
 
         let (level, origin) = req[0].split_at(1);
 
@@ -77,7 +75,7 @@ fn persist_logs(data: Model) -> Result<String, BunkerError> {
         .get_conn();
 
     let p = conn.exec_drop(
-        &format!("INSERT INTO {} (error, origin, level) VALUES (:error, :origin: level)", LOG_TABLE_NAME), 
+        "INSERT INTO ext_logs (error, origin, level) VALUES (:error, :origin: level)", 
         params! {
             "error" => data.error,
             "origin" => data.origin,

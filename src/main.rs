@@ -1,5 +1,4 @@
 mod service;
-mod error;
 mod dependency;
 
 #[macro_use]
