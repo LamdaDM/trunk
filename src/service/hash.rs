@@ -1,6 +1,6 @@
 use bunker::{exception::BunkerError, registerable};
 
-use crate::dependency::VARIABLE_MAP;
+const DELIMITER: char = '|';
 
 pub struct HashController;
 
@@ -14,11 +14,36 @@ impl registerable::Controller for HashController {
 /// input should be formatted as: `[$*][...origin][|][error]`.
 /// Throws error from utf8-to-string conversion, string-to-u32 conversion or wrong formatting.
 fn serve(msg: &str) -> Result<String, BunkerError> {
+    let (route, msg) = msg.split_at(1);
+
+    match route {
+        "+" => create(msg),
+        "=" => verify(msg),
+        _ => Err(BunkerError::BadRequest(format!("Invalid route: {}", route)))
+    }
+}
+
+fn verify(msg: &str) -> Result<String, BunkerError> {
+    match msg.split_once(DELIMITER) {
+        Some((original, hash)) => {
+            let v = argon2::verify_encoded(hash, original.as_bytes()).unwrap();
+            Ok(match v {
+                true => "t",
+                false => "f",
+            }.to_string())
+        },
+        None => Err(BunkerError::BadRequest(format!("Invalid request: {}", msg))),
+    }
+}
+
+fn create(msg: &str) -> Result<String, BunkerError> {
     let parsed_input: Vec<&str> = msg
-        .split(VARIABLE_MAP.get_val("PARAM_SEPARATOR").unwrap())
+        .split(DELIMITER)
         .collect();
 
-    if parsed_input.len() != 4 { return Err(BunkerError::BadRequest("Invalid request.".to_string())) }; // TODO: Proper error message for bad formatting
+    if parsed_input.len() != 4 { 
+        return Err(BunkerError::BadRequest(format!("Invalid parameter length: {}", parsed_input.len()))) 
+    }; // TODO: Proper error message for bad formatting
 
     let mem_cost = match parsed_input[1].parse::<u32>() {
         Ok(val) => val * 1024,
@@ -47,6 +72,5 @@ fn serve(msg: &str) -> Result<String, BunkerError> {
             ad: &[],
             hash_length: 32
         }
-    ).unwrap())
-    
+    ).unwrap_or(String::new()))
 }

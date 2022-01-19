@@ -5,6 +5,8 @@ use mysql::params;
 use mysql::prelude::Queryable;
 use crate::dependency::DATABASE_MYSQL;
 
+const DELIMITER: char = '|';
+
 pub struct LoggerController;
 
 impl registerable::Controller for LoggerController {
@@ -53,7 +55,7 @@ impl Model {
         let req = input.trim();
 
         let req: Vec<&str> = req
-            .split('|')
+            .split(DELIMITER)
             .collect();
 
         if req.len() != 2 { return Err(BunkerError::BadRequest("Invalid request.".to_string())) }
@@ -84,7 +86,7 @@ fn persist_logs(data: Model) -> Result<String, BunkerError> {
     );
     
     match p {
-        Ok(_) => Ok(String::from("Ok")),
+        Ok(()) => Ok(String::from("Ok")),
         Err(err) => Err(BunkerError::BadRequest(String::from(err.to_string()))),
     }
 }
