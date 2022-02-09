@@ -1,5 +1,7 @@
 use bunker::{exception::BunkerError, registerable};
 
+use crate::dependency::VARIABLE_MAP;
+
 const DELIMITER: char = '|';
 
 pub struct HashController;
@@ -41,22 +43,43 @@ fn create(msg: &str) -> Result<String, BunkerError> {
         .split(DELIMITER)
         .collect();
 
-    if parsed_input.len() != 4 { 
-        return Err(BunkerError::BadRequest(format!("Invalid parameter length: {}", parsed_input.len()))) 
-    }; // TODO: Proper error message for bad formatting
+    let inlen = parsed_input.len();
 
-    let mem_cost = match parsed_input[1].parse::<u32>() {
-        Ok(val) => val * 1024,
-        Err(err) => return Err(BunkerError::BadRequest(err.to_string())),
-    };
-    let time_cost = match parsed_input[2].parse::<u32>() {
-        Ok(val) => val,
-        Err(err) => return Err(BunkerError::BadRequest(err.to_string())),
-    };
-    let lanes = match parsed_input[3].parse::<u32>() {
-        Ok(val) => val,
-        Err(err) => return Err(BunkerError::BadRequest(err.to_string())),
-    };
+    let mem_cost: u32;
+    let time_cost: u32;
+    let lanes: u32;
+
+    if inlen == 4 {
+        mem_cost = match parsed_input[1].parse::<u32>() {
+            Ok(val) => val * 1024,
+            Err(err) => return Err(BunkerError::BadRequest(err.to_string())),
+        };
+        time_cost = match parsed_input[2].parse::<u32>() {
+            Ok(val) => val,
+            Err(err) => return Err(BunkerError::BadRequest(err.to_string())),
+        };
+        lanes = match parsed_input[3].parse::<u32>() {
+            Ok(val) => val,
+            Err(err) => return Err(BunkerError::BadRequest(err.to_string())),
+        };
+    } else if inlen == 1 {
+        mem_cost = match VARIABLE_MAP.get_val("A2_MEM").unwrap().parse::<u32>() {
+            Ok(val) => val * 1024,
+            Err(err) => return Err(BunkerError::BadRequest(err.to_string())),
+        };
+        time_cost = match VARIABLE_MAP.get_val("A2_ITER").unwrap().parse::<u32>() {
+            Ok(val) => val,
+            Err(err) => return Err(BunkerError::BadRequest(err.to_string())),
+        };
+        lanes = match VARIABLE_MAP.get_val("A2_LANES").unwrap().parse::<u32>() {
+            Ok(val) => val,
+            Err(err) => return Err(BunkerError::BadRequest(err.to_string())),
+        };    
+    } else { 
+        return Err(BunkerError::BadRequest(
+            format!("Invalid parameter length: {}", parsed_input.len())
+        )) 
+    }; 
 
     Ok(argon2::hash_encoded(
         parsed_input[0].as_bytes(), 

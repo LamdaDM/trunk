@@ -7,7 +7,7 @@ const CFG_FILE_PATH: &str = ".cfg";
 
 lazy_static! {
     pub static ref DATABASE_MYSQL: RwLock<DbMySQL> = RwLock::new(DbMySQL::load());
-    pub static ref VARIABLE_MAP: VariableMap = cfg_loader::load(CFG_FILE_PATH);
+    pub static ref VARIABLE_MAP: VariableMap = cfg_loader::load(CFG_FILE_PATH).unwrap();
 }
 
 pub struct DbMySQL(mysql::Pool);
