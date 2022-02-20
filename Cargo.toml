@@ -11,4 +11,3 @@ bunker = { git = "https://github.com/LamdaDM/bunker" }
 cfg_loader = { git = "https://github.com/LamdaDM/rust_cfg_loader" }
 rust-argon2 = "0.8"
 mysql = "*"
-lazy_static = "*"
