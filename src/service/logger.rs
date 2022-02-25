@@ -1,46 +1,66 @@
-use std::fmt::Display;
+use std::cell::RefCell;
+use std::fmt::{Display, self};
+use std::rc::Rc;
 use std::sync::Arc;
 
-use bunker::{exception::BunkerError, registerable};
+use bunker::registerable;
 use mysql::params;
 use mysql::prelude::Queryable;
 use crate::config::Container;
+use crate::protocol::{StatusError, SecondaryStatus, StatusSource, StatusReport};
 
 const DELIMITER: char = '|';
 
-pub struct LoggerController {
-    container: Arc<Container>
-}
+pub struct LoggerController(Arc<Container>);
 
 impl LoggerController {
     pub fn new(container: Arc<Container>) -> LoggerController {
-        LoggerController { container }
+        LoggerController(container)
     }
 
-    fn persist_logs(&self, data: Model) -> Result<String, BunkerError> {
-        let mut conn = self.container.db
+    fn persist_logs(&self, data: Model) -> Result<String, LoggerError> {
+        let mut conn = self.0.db
             .get_conn()
             .unwrap();
     
-        let p = conn.exec_drop(
-            "INSERT INTO ext_logs (error, origin, level) VALUES (:error, :origin: level)", 
+        match conn.exec_drop(
+            "INSERT INTO external_logs (error, origin, level) VALUES (:error, :origin, :level)", 
             params! {
-                "error" => data.error,
-                "origin" => data.origin,
-                "level" => data.level.to_string()
+                "error" => &data.error,
+                "origin" => &data.origin,
+                "level" => &data.level.to_string()
             }  
-        );
-        
-        match p {
-            Ok(()) => Ok(String::from("Ok")),
-            Err(err) => Err(BunkerError::BadRequest(String::from(err.to_string()))),
+        ) {
+            Ok(()) => Ok(String::new()),
+            Err(err) => Err(LoggerError::Persistence(data, err.to_string())),
         }
     }
 }
 
 impl registerable::Controller for LoggerController {
-    fn accept(&self, msg: String) -> Result<String, BunkerError> { 
-        Ok(self.persist_logs(Model::new(&msg)?)?) 
+    fn serve(&self, msg: String, out_debug: Rc<RefCell<String>>) -> String {
+        let mut status_report = self.0.su_factory.create_blank();
+
+        status_report = match Model::new(&msg) {
+            Ok(data) => {
+                match self.persist_logs(data) {
+                    Ok(ok) => {
+                        status_report.set_response(ok)
+                    },
+                    Err(err) => {
+                        out_debug.replace(err.to_string());
+                        err.report(status_report)
+                    },
+                }
+                
+            },
+            Err(err) => {
+                out_debug.replace(err.to_string());
+                err.report(status_report)
+            },
+        };
+        
+        status_report.build_response()
     }
 }
 
@@ -79,15 +99,21 @@ struct Model {
     level: Level
 }
 
-impl Model {
-    fn new(input: &str) -> Result<Model, BunkerError> {
-        let req = input.trim();
+impl fmt::Display for Model {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{{\n\t{}\n\t{}\n\t{}\n}}", self.error, self.origin, self.level)
+    }
+}
 
-        let req: Vec<&str> = req
+impl Model {
+    fn new(input: &str) -> Result<Model, LoggerError> {
+        let trimmed_input = input.trim();
+
+        let req: Vec<&str> = trimmed_input
             .split(DELIMITER)
             .collect();
 
-        if req.len() != 2 { return Err(BunkerError::BadRequest("Invalid request.".to_string())) }
+        if req.len() != 2 { return Err(LoggerError::Binding(trimmed_input.to_string(), req.len())) }
 
         let (level, origin) = req[0].split_at(1);
 
@@ -96,5 +122,37 @@ impl Model {
             origin: origin.to_string(),
             level: Level::from(level)
         })
+    }
+}
+
+
+enum LoggerError {
+    Persistence(Model, String),
+    Binding(String, usize)
+}
+
+impl fmt::Display for LoggerError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LoggerError::Persistence(ref model, ref db_msg) => write!(f, 
+                "Failed to persist model! Given model: {}\n\tMessage from database: {}", 
+                model,
+                db_msg
+            ),
+            LoggerError::Binding(ref msg, ref len) => write!(f, 
+                "Failed to bind request paramers to model!\n\tLen: {}\n\tRequest: {}",
+                len,
+                msg
+            ),
+        }
+    }
+}
+
+impl StatusSource for LoggerError {
+    fn report(&self, origin: StatusReport) -> StatusReport {
+        match self {
+            LoggerError::Persistence(_, _) =>  origin.set_error(StatusError::Server).set_secondary(SecondaryStatus::Dependency),
+            LoggerError::Binding(_, _) =>   origin.set_error(StatusError::Client).set_secondary(SecondaryStatus::None),
+        }
     }
 }

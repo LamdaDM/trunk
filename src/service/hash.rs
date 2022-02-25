@@ -1,8 +1,8 @@
-use std::sync::Arc;
+use std::{sync::Arc, num::ParseIntError, fmt};
 
-use bunker::{exception::BunkerError, registerable};
+use bunker::registerable;
 
-use crate::config::Container;
+use crate::{config::Container, protocol::{StatusSource, StatusReport, StatusError}};
 
 const DELIMITER: char = '|';
 
@@ -15,7 +15,7 @@ impl HashController {
         HashController { container }
     }
 
-    fn create(&self, msg: &str) -> Result<String, BunkerError> {
+    fn create(&self, msg: &str) -> Result<String, HashError> {
         let cfg = &self.container.cfg;
 
         let parsed_input: Vec<&str> = msg
@@ -31,33 +31,31 @@ impl HashController {
         if inlen == 4 {
             mem_cost = match parsed_input[1].parse::<u32>() {
                 Ok(val) => val * 1024,
-                Err(err) => return Err(BunkerError::BadRequest(err.to_string())),
+                Err(err) => return Err(HashError::AtoiConv(err)),
             };
             time_cost = match parsed_input[2].parse::<u32>() {
                 Ok(val) => val,
-                Err(err) => return Err(BunkerError::BadRequest(err.to_string())),
+                Err(err) => return Err(HashError::AtoiConv(err)),
             };
             lanes = match parsed_input[3].parse::<u32>() {
                 Ok(val) => val,
-                Err(err) => return Err(BunkerError::BadRequest(err.to_string())),
+                Err(err) => return Err(HashError::AtoiConv(err)),
             };
         } else if inlen == 1 {
             mem_cost = match cfg.get_val("A2_MEM").unwrap().parse::<u32>() {
                 Ok(val) => val * 1024,
-                Err(err) => return Err(BunkerError::BadRequest(err.to_string())),
+                Err(err) => return Err(HashError::AtoiConv(err)),
             };
             time_cost = match cfg.get_val("A2_ITER").unwrap().parse::<u32>() {
                 Ok(val) => val,
-                Err(err) => return Err(BunkerError::BadRequest(err.to_string())),
+                Err(err) => return Err(HashError::AtoiConv(err)),
             };
             lanes = match cfg.get_val("A2_LANES").unwrap().parse::<u32>() {
                 Ok(val) => val,
-                Err(err) => return Err(BunkerError::BadRequest(err.to_string())),
+                Err(err) => return Err(HashError::AtoiConv(err)),
             };    
         } else { 
-            return Err(BunkerError::BadRequest(
-                format!("Invalid parameter length: {}", inlen)
-            )) 
+            return Err(HashError::Parse(msg.to_string()));
         }; 
     
         Ok(argon2::hash_encoded(
@@ -77,20 +75,7 @@ impl HashController {
         ).unwrap_or(String::new()))
     }
 
-    /// Takes buffer from stream and separates into strings,
-    /// input should be formatted as: `[$*][...origin][|][error]`.
-    /// Throws error from utf8-to-string conversion, string-to-u32 conversion or wrong formatting.
-    fn serve(&self, msg: &str) -> Result<String, BunkerError> {
-        let (route, msg) = msg.split_at(1);
-
-        match route {
-            "+" => self.create(msg),
-            "=" => self.verify(msg),
-            _ => Err(BunkerError::BadRequest(format!("Invalid route: {}", route)))
-        }
-    }
-
-    fn verify(&self, msg: &str) -> Result<String, BunkerError> {
+    fn verify(&self, msg: &str) -> Result<String, HashError> {
         match msg.split_once(DELIMITER) {
             Some((original, hash)) => {
                 let v = argon2::verify_encoded(hash, original.as_bytes()).unwrap();
@@ -99,13 +84,70 @@ impl HashController {
                     false => "f",
                 }.to_string())
             },
-            None => Err(BunkerError::BadRequest(format!("Invalid request: {}", msg))),
+            None => Err(HashError::Parse(msg.to_string())),
         }
     }
 }
 
 impl registerable::Controller for HashController {
-    fn accept(&self, msg: String) -> Result<String, BunkerError> {
-        self.serve(&msg)
+    fn serve(&self, msg: String, out_debug: std::rc::Rc<std::cell::RefCell<String>>) -> String {
+        let mut status_report = self.container.su_factory.create_blank();
+
+        // input should be formatted as `[$*][...origin][|][error]`. 
+        let (route, msg) = msg.split_at(1);
+
+        status_report = match route {
+            "+" => {
+                match self.create(msg) {
+                    Ok(hash) => status_report.set_response(hash),
+                    Err(err) => {
+                        out_debug.replace(err.to_string());
+                        err.report(status_report)
+                    },
+                }
+            },
+            "=" => {
+                match self.verify(msg) {
+                    Ok(case) => status_report.set_response(case),
+                    Err(err) => {
+                        out_debug.replace(err.to_string());
+                        err.report(status_report)
+                    },
+                }
+            },
+            _ => {
+                let err = HashError::NotFound(route.to_string());
+                out_debug.replace(err.to_string());
+                err.report(status_report)
+            }
+        };
+
+        status_report.build_response()
+    }    
+}
+
+pub enum HashError {
+    AtoiConv(ParseIntError),
+    Parse(String),
+    NotFound(String)
+}
+
+impl fmt::Display for HashError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            HashError::AtoiConv(ref err) => write!(f, "Failed to parse argument: {}", err),
+            HashError::Parse(ref msg) => write!(f, "Failed to parse message: {}", msg),
+            HashError::NotFound(ref route) => write!(f, "No matching route found: {}", route),
+        }
+    }
+}
+
+impl StatusSource for HashError {
+    fn report(&self, origin: StatusReport) -> StatusReport {
+        match self {
+            HashError::AtoiConv(_) => origin.set_error(StatusError::Client),
+            HashError::Parse(_) => origin.set_error(StatusError::Client),
+            HashError::NotFound(_) => origin.set_error(StatusError::Client),
+        }
     }
 }

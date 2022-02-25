@@ -1,9 +1,24 @@
-pub fn prepend_code(code: i32, response: Option<String>) -> String {
-    let code_str = code.to_string();
-    
-    return match response {
-        Some(res) => code_str + &res,
-        None => code_str,
+fn write_code(code: i32) -> String {
+    if code == 0 {
+        "00".to_string()
+    } else {
+    code.to_string() 
+}
+}
+
+fn write_fullcode(code: i32, response: &str) -> String {
+    write_code(code) + response
+}
+
+pub struct StatusReportFactory;
+
+impl StatusReportFactory {
+    pub fn new() -> StatusReportFactory {
+        StatusReportFactory
+    }
+
+    pub fn create_blank(&self) -> StatusReport {
+        StatusReport::new()
     }
 }
 
@@ -36,10 +51,10 @@ impl StatusReport {
 
     pub fn build_response(&self) -> String {
         if let Some(res) = &self.response {
-            return "00".to_string() + res;
+            write_fullcode(0, res)
+        } else {
+            write_code(self.error.to_code() + self.secondary.to_code())
         }
-
-        (self.error.to_code() + self.secondary.to_code()).to_string()
     }
 }
 
@@ -73,4 +88,8 @@ impl SecondaryStatus {
             SecondaryStatus::None => 0,
         }
     }
+}
+
+pub trait StatusSource {
+    fn report(&self, origin: StatusReport) -> StatusReport;
 }

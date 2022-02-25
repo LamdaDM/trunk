@@ -3,6 +3,8 @@
 
 
 ### TODO
-- [X] Load config through cfg_loader
+- [X] Load config through cfg_loader.
 - [ ] When IO-related errors occur when persisting logs, store to a local file and retry later.
-- [ ] Rework messaging protocol.
+- [X] Rework messaging protocol.
+- [ ] Allow trunk to run without non-essential services, and track active and inactive services.
+- [ ] Revisit persistence implementation for logs.
