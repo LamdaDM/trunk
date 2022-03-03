@@ -19,9 +19,15 @@ impl LoggerController {
     }
 
     fn persist_logs(&self, data: Model) -> Result<String, LoggerError> {
-        let mut conn = self.0.db
-            .get_conn()
-            .unwrap();
+        let cont = Arc::clone(&self.0);
+
+        if cont.db.is_none() {
+            return Err(LoggerError::Down)
+        }
+
+        let mut conn = cont.db
+            .as_ref().unwrap()
+            .get_conn().unwrap();
     
         match conn.exec_drop(
             "INSERT INTO external_logs (error, origin, level) VALUES (:error, :origin, :level)", 
@@ -128,7 +134,8 @@ impl Model {
 
 enum LoggerError {
     Persistence(Model, String),
-    Binding(String, usize)
+    Binding(String, usize),
+    Down
 }
 
 impl fmt::Display for LoggerError {
@@ -144,6 +151,7 @@ impl fmt::Display for LoggerError {
                 len,
                 msg
             ),
+            LoggerError::Down => write!(f, "Client tried to access inactive logging service!"),
         }
     }
 }
@@ -153,6 +161,7 @@ impl StatusSource for LoggerError {
         match self {
             LoggerError::Persistence(_, _) =>  origin.set_error(StatusError::Server).set_secondary(SecondaryStatus::Dependency),
             LoggerError::Binding(_, _) =>   origin.set_error(StatusError::Client).set_secondary(SecondaryStatus::None),
+            LoggerError::Down => origin.set_error(StatusError::None).set_secondary(SecondaryStatus::Service),
         }
     }
 }

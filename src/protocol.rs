@@ -1,15 +1,3 @@
-fn write_code(code: i32) -> String {
-    if code == 0 {
-        "00".to_string()
-    } else {
-    code.to_string() 
-}
-}
-
-fn write_fullcode(code: i32, response: &str) -> String {
-    write_code(code) + response
-}
-
 pub struct StatusReportFactory;
 
 impl StatusReportFactory {
@@ -23,7 +11,8 @@ impl StatusReportFactory {
 }
 
 pub struct StatusReport {
-    response: Option<String>,
+    response: String,
+    ok: bool,
     error: StatusError,
     secondary: SecondaryStatus
 }
@@ -31,7 +20,8 @@ pub struct StatusReport {
 impl StatusReport {
     pub fn new() -> StatusReport {
         StatusReport {
-            response: None,
+            response: String::new(),
+            ok: true,
             error: StatusError::None,
             secondary: SecondaryStatus::None
         }
@@ -46,14 +36,14 @@ impl StatusReport {
     }
 
     pub fn set_response(self, response: String) -> StatusReport {
-        StatusReport { response: Some(response), ..self }
+        StatusReport { response, ..self }
     }
 
     pub fn build_response(&self) -> String {
-        if let Some(res) = &self.response {
-            write_fullcode(0, res)
+        if self.ok {
+            String::new() + "00" + &self.response
         } else {
-            write_code(self.error.to_code() + self.secondary.to_code())
+            (self.error.to_code() + self.secondary.to_code()).to_string() + &self.response
         }
     }
 }
